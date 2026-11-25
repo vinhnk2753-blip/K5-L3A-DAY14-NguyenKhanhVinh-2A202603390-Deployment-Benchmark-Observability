@@ -182,10 +182,20 @@ X-XSS-Protection: 1; mode=block
 
 ## Part 3: Cloud Deployment
 
-### Exercise 3.1 / 3.2: Deploy Agent Part 6 lên Cloud
+### Exercise 3.1 / 3.2: Deploy Agent Part 6 lên Cloud (Render)
 
-- **Public URL:** *(Đang cập nhật sau bước deploy Railway/Render — xem [`DEPLOYMENT.md`](DEPLOYMENT.md))*
-- **Screenshots:** `screenshots/dashboard.png`, `screenshots/running.png`, `screenshots/test.png`
+- **Nền tảng:** Render (Blueprint managed, Docker runtime từ `06-lab-complete/Dockerfile` + Managed Redis `k5-day14-agent-redis`, Region `singapore`, Free tier)
+- **Public URL:** `https://k5-day14-production-agent-jhq5.onrender.com` (chi tiết xem [`DEPLOYMENT.md`](DEPLOYMENT.md))
+- **Screenshots:**
+  - [Dashboard Render (agent + Redis)](screenshots/dashboard.png)
+  - [Service Live](screenshots/running.png)
+  - [Kết quả kiểm thử 4 lệnh CP6](screenshots/test.png)
+- **Kết quả chạy 4 lệnh tự kiểm CP6 trên URL public (không lộ key):**
+  - `GET /health` → **`200`** (`{"status":"ok","environment":"production","uptime_seconds":389.9}`)
+  - `GET /ready` → **`200`** (`{"status":"ready","redis":"connected","environment":"production"}`)
+  - `POST /ask` (không có `X-API-Key`) → **`401`** (`{"detail":"Invalid or missing API key"}`)
+  - `POST /ask` (có `X-API-Key` hợp lệ) → **`200`** (`{"question":"Hello","answer":"Đây là câu trả lời từ AI agent (mock)..."}`)
+  - `POST /ask` (input sai `{"invalid":"data"}`) → **`422`** (trả lỗi validation rõ ràng, không lộ stack trace)
 
 ### So sánh `railway.toml` và `render.yaml`
 
@@ -399,7 +409,7 @@ Total messages: 10
 
 ## Part 6: Final Project — Kết quả `check_production_ready.py`
 
-Chạy bản đầy đủ (có Docker, trên môi trường POSIX `os.name = 'posix'`, Python 3.11) trong `06-lab-complete/`:
+Chạy bản đầy đủ (có Docker, trên môi trường POSIX `os.name = 'posix'`, Python 3.11) kèm `--public-url https://k5-day14-production-agent-jhq5.onrender.com` trong `06-lab-complete/`:
 
 ```text
 ================================================================
@@ -417,18 +427,19 @@ Chạy bản đầy đủ (có Docker, trên môi trường POSIX `os.name = 'po
      ✅ Graceful shutdown
      ✅ Public URL ready (Railway / Render config)
 ----------------------------------------------------------------
-  Result: 12/12 tiêu chí đạt · 43/43 checks passed
+  Result: 12/12 tiêu chí đạt · 44/44 checks passed
   🎉 PASS 12/12 — PRODUCTION READY! Deploy nào!
 ================================================================
 ```
 
 Một số chỉ số chính ghi nhận từ script chấm:
-- **Docker build & image size:** Build thành công trong `17s`, kích thước image cuối = **`238 MB`** (`< 500 MB`), non-root `appuser`, có `HEALTHCHECK`.
+- **Docker build & image size:** Build thành công, kích thước image cuối = **`238 MB`** (`< 500 MB`), non-root `appuser`, có `HEALTHCHECK`.
 - **Rate limit & Stateless:** Bị chặn `429` sau đúng `5` request (`RATE_LIMIT_PER_MINUTE=5`) với header `Retry-After`; sau khi restart agent vẫn trả `429` (state bền vững trong Redis).
 - **Readiness khi Redis down:** `/health` vẫn trả `200`, `/ready` trả `503`.
 - **Cost guard:** Trả `402` ngay khi vượt ngân sách `0.000001 USD`.
 - **Structured logging:** `17/17` dòng log ứng dụng đều là JSON hợp lệ.
-- **Graceful shutdown:** In-flight request hoàn thành `200` khi nhận `SIGTERM`, process thoát `exit code 0`; `docker stop` tắt sạch với `exit code 0` trong **`0.8s`** (`< 10s`).
+- **Graceful shutdown:** In-flight request hoàn thành `200` khi nhận `SIGTERM`, process thoát `exit code 0`; `docker stop` tắt sạch với `exit code 0` trong **`0.9s`** (`< 10s`).
+- **Public URL live:** `GET https://k5-day14-production-agent-jhq5.onrender.com/health → 200`.
 
 ---
 
@@ -449,3 +460,7 @@ Theo quy định mục 1 trong `RULES.md`, dưới đây là nhật ký sử d�
 3. **Part 7 — Benchmark, Eval, Observability & Chaos Experiments:**
    - *Hỏi gì:* Hỗ trợ thêm metric `agent_question_length_chars` (Exercise 7.1), bổ sung 2 entry thiếu (`jwt`, `hpa`/`kubernetes`) vào `KNOWLEDGE_BASE` (Exercise 7.3), tạo CI workflow `.github/workflows/eval.yml`, và tự động hóa đo tải + thí nghiệm chaos A–E.
    - *Tự sửa & tự kiểm tra:* Phát hiện lệnh `docker compose run --rm locust` tự bật lại `agent-2` do `deploy.replicas: 2`, nên đã chạy lại `scale_1` với cờ `--no-deps` và kiểm tra bằng `docker compose ps agent` đảm bảo đúng 1 instance. Toàn bộ 10 file JSON (`reports/`), 2 file CSV (`benchmark-results/`), 4 ảnh screenshot (`screenshots/`), kết quả `promtool test rules` (`SUCCESS`) và dòng log JSON khớp `trace_id` đều được tạo từ lần chạy thật và đối chiếu từng con số với `BENCHMARK_REPORT.md`.
+
+4. **Part 3 / CP6 — Cloud Deployment trên Render:**
+   - *Hỏi gì:* Hỏi cấu trúc Render Blueprint (`render.yaml`) hỗ trợ `rootDir: 06-lab-complete` + managed Redis miễn phí (`fromService.connectionString`) và `generateValue: true` cho `AGENT_API_KEY`.
+   - *Tự kiểm tra:* Deploy thành công trên Render Dashboard (`https://k5-day14-production-agent-jhq5.onrender.com`), chạy đủ 4 lệnh CP6 (`200 / 200 / 401 / 200`), kiểm tra input sai trả `422`, chạy lại `check_production_ready.py --public-url` đạt `44/44 checks passed (PASS 12/12)` và xác nhận không có secret nào trong repo hoặc lịch sử git.
