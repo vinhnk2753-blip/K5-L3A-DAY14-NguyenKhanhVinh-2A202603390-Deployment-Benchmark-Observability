@@ -1,7 +1,34 @@
-# ============================================================
-# TODO (tiêu chí 12): cấu hình deploy Render (Blueprint) — có thể dùng thay railway.toml
-#   services:
-#     - type: web, runtime: docker, healthCheckPath: /health
-#     - envVars: secret như AGENT_API_KEY dùng `generateValue: true` hoặc `sync: false`,
-#       KHÔNG ghi thẳng giá trị
-# ============================================================
+services:
+  - type: web
+    name: k5-day14-production-agent
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    region: singapore
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "10"
+      - key: DAILY_BUDGET_USD
+        value: "1.0"
+      - key: MONTHLY_BUDGET_USD
+        value: "10.0"
+      - key: AGENT_API_KEY
+        generateValue: true
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: k5-day14-agent-redis
+          property: connectionString
+
+  - type: redis
+    name: k5-day14-agent-redis
+    region: singapore
+    plan: free
+    ipAllowList: []
+    maxmemoryPolicy: allkeys-lru
